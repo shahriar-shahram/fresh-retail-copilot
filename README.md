@@ -732,3 +732,8 @@ Fresh Retail Copilot is built on one core principle:
 > Sales data is only meaningful if you understand the inventory constraints that generated it.
 
 By combining stock-aware feature engineering, latent demand recovery, lost-sales estimation, corrected-demand forecasting, API serving, and interactive visualization, this project turns raw retail observations into a practical retail intelligence system.
+
+## Live API
+
+- Base URL: `https://fresh-retail-api-837696130499.us-central1.run.app`
+- API Docs: `https://fresh-retail-api-837696130499.us-central1.run.app/docs`
