@@ -1,43 +1,30 @@
 # 🛒 Fresh Retail Copilot
 
-> Stockout-aware demand forecasting and retail intelligence system  
-> Built to recover true demand, quantify lost sales, and enable better inventory decisions.
+> A stockout-aware demand forecasting and retail intelligence system  
+> that reconstructs true demand, quantifies lost sales, and enables data-driven inventory decisions.
 
 ---
 
-## 🚀 Overview
+## 📌 Executive Summary
 
-Fresh Retail Copilot is an end-to-end machine learning system that addresses a critical retail problem:
+In real-world retail systems, observed sales are often **censored by inventory constraints**. When a product is out of stock, sales drop — but demand may still exist.
 
-> **Observed sales ≠ true demand**
+This project builds a **production-ready machine learning pipeline** that:
 
-Products often sell less not because demand is low, but because they are unavailable.
-
-This system reconstructs **latent (true) demand**, estimates **lost sales**, and produces **corrected forecasts** for better decision-making.
-
----
-
-## 🧠 Key Features
-
-- 📦 **Stockout-aware feature engineering**
-- 🔍 **Latent demand recovery model**
-- 📉 **Lost sales estimation**
-- 📈 **Forecasting on corrected demand**
-- ⚡ **FastAPI real-time inference API**
-- 🖥 **Interactive Streamlit dashboard**
-- 🐳 **Dockerized for deployment**
-- ☁️ **Cloud-ready (GCP Cloud Run)**
+- Recovers **latent (true) demand** under stockout conditions  
+- Estimates **lost sales at store-product-day level**  
+- Trains forecasting models on **de-biased demand signals**  
+- Serves predictions via a **FastAPI backend**  
+- Exposes insights through a **Streamlit dashboard**  
+- Is fully **containerized and deployable to cloud environments**
 
 ---
 
-## 🧩 Problem Statement
+## 🧠 Problem Formulation
 
-Retail data is inherently biased:
+### Observational Bias in Retail Data
 
-- If a product is out of stock → sales drop to zero
-- But demand may still exist
-
-Traditional forecasting models:
+Retail datasets typically contain:
 
 ```text
-Learn from incorrect signals → underestimate demand
+Observed Sales = min(True Demand, Available Inventory)
