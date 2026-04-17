@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+venv/
+
+# IDE
+.idea/
+
+# Env files
+.env
+
+# Raw data (DO NOT PUSH)
+data/raw/
+
+# Optional: large outputs
+*.parquet
+*.pkl
