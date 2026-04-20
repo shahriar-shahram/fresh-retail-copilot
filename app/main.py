@@ -3,8 +3,10 @@ import requests
 import pandas as pd
 import os
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
-
+API_BASE_URL = os.getenv(
+    "API_BASE_URL",
+    "https://fresh-retail-api-837696130499.us-central1.run.app"
+)
 st.set_page_config(page_title="Fresh Retail Copilot", layout="wide")
 
 st.title("Fresh Retail Copilot")
