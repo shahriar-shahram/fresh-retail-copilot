@@ -5,7 +5,7 @@ import os
 
 API_BASE_URL = os.getenv(
     "API_BASE_URL",
-    "https://fresh-retail-api-837696130499.us-central1.run.app"
+    "https://fresh-retail-copilot-api-837696130499.us-central1.run.app"
 )
 st.set_page_config(page_title="Fresh Retail Copilot", layout="wide")
 
