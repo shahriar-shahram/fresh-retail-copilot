@@ -5,321 +5,343 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from ui import inject_css, sidebar_guide, hero, section_title, callout, product_card
+from ui import inject_css, sidebar_guide, hero, section_title, callout
 
 API_BASE_URL = os.getenv(
     "API_BASE_URL",
     "https://fresh-retail-copilot-api-837696130499.us-central1.run.app",
 )
 
-MONTH_FEATURES = [
-    "lag_1",
-    "lag_7",
-    "rolling_mean_7",
-    "discount",
-    "holiday_flag",
-    "activity_flag",
-    "precpt",
-    "avg_temperature",
-    "avg_humidity",
-    "avg_wind_level",
-    "day_of_week",
-    "month",
-    "avg_sales_when_available",
-    "stockout_hours",
-    "demand_std",
+HORIZON_ORDER = [
+    ("1_day_ahead", "1 day ahead"),
+    ("1_week_ahead", "1 week ahead"),
+    ("1_month_ahead", "1 month ahead"),
 ]
 
-HISTORY_COLUMNS = [
+HORIZON_LABELS = dict(HORIZON_ORDER)
+
+INT_FEATURES = {
+    "city_id",
     "store_id",
+    "management_group_id",
+    "first_category_id",
+    "second_category_id",
+    "third_category_id",
     "product_id",
-    "dt",
-    "sale_amount",
-    "in_stock_ratio",
-    "stockout_hours",
-    "discount",
     "holiday_flag",
     "activity_flag",
-    "lag_1",
-    "lag_7",
-    "rolling_mean_7",
-    "precpt",
-    "avg_temperature",
-    "avg_humidity",
-    "avg_wind_level",
     "day_of_week",
     "month",
-    "avg_sales_when_available",
-    "demand_std",
-]
-
-HORIZON_MAP = {
-    "1 day ahead": 1,
-    "1 week ahead": 7,
-    "1 month ahead": 30,
+    "day_of_month",
+    "week_of_year",
+    "is_weekend",
 }
 
-
+st.set_page_config(page_title="Forecast | Fresh Retail Copilot", page_icon="🔮", layout="wide")
 inject_css()
 sidebar_guide("Forecast")
 
 hero(
     "🔮 Forecast",
     (
-        "Forecast demand for a selected store-product pair. "
-        "This view shows the recent demand history together with a forward forecast path "
-        "for 1 day, 1 week, or 1 month."
+        "This page generates three horizon-specific demand forecasts for the selected store-product pair: "
+        "1 day ahead, 1 week ahead, and 1 month ahead."
     ),
-    badges=["Recent history", "Forward forecast path", "1 / 7 / 30 periods"],
+    badges=["1 day ahead", "1 week ahead", "1 month ahead", "Horizon-specific models"],
     eyebrow="Demand forecast workspace",
 )
 
 
 @st.cache_data(show_spinner=False)
-def load_history():
-    train_df = pd.read_parquet("data/processed/model_train_rich.parquet", columns=HISTORY_COLUMNS)
-    eval_df = pd.read_parquet("data/processed/model_eval_rich.parquet", columns=HISTORY_COLUMNS)
-
-    df = pd.concat([train_df, eval_df], ignore_index=True)
+def load_data():
+    df = pd.read_parquet("data/processed/app_forecast_scenarios_rich.parquet")
     df["dt"] = pd.to_datetime(df["dt"])
-    df = df.sort_values(["store_id", "product_id", "dt"]).reset_index(drop=True)
-    return df
+    return df.sort_values(["store_id", "product_id", "dt"]).reset_index(drop=True)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_month_model_metadata():
-    try:
-        r = requests.get(f"{API_BASE_URL}/month-horizon-model", timeout=20)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return {}
+def load_business_models():
+    r = requests.get(f"{API_BASE_URL}/business-horizon-models", timeout=20)
+    r.raise_for_status()
+    return r.json()
 
 
-def make_month_payload(row):
+def make_payload(row, features, horizon_key):
     payload = {}
-    int_cols = {"holiday_flag", "activity_flag", "day_of_week", "month"}
-
-    for col in MONTH_FEATURES:
-        if col in int_cols:
-            payload[col] = int(row[col])
+    for feature in features:
+        if feature in INT_FEATURES:
+            payload[feature] = int(row[feature])
         else:
-            payload[col] = float(row[col])
-
+            payload[feature] = float(row[feature])
+    payload["horizon"] = horizon_key
     return payload
 
 
-def predict_month_horizon(payload):
+def predict_business_horizon(payload):
     r = requests.post(
-        f"{API_BASE_URL}/predict-month-horizon",
+        f"{API_BASE_URL}/predict-business-horizon",
         json=payload,
-        timeout=30,
+        timeout=25,
     )
     r.raise_for_status()
     return r.json()
 
 
-def pct_change(current_value, reference_value):
-    if abs(reference_value) < 1e-9:
+def pct_change(value, ref):
+    if abs(ref) < 1e-9:
         return 0.0
-    return (current_value - reference_value) / reference_value * 100.0
+    return 100.0 * (value - ref) / ref
 
 
-history_df = load_history()
-month_meta = load_month_model_metadata()
-month_metrics = month_meta.get("metrics", {})
+df = load_data()
+
+try:
+    bundle = load_business_models()
+except Exception as e:
+    st.error(f"Could not load business-horizon models from API: {e}")
+    st.info(f"Check API_BASE_URL: {API_BASE_URL}")
+    st.stop()
+
+registry = bundle.get("registry", {})
+features = bundle.get("features", [])
+
+if not registry or not features:
+    st.error("Business-horizon registry or feature list is missing from the API response.")
+    st.stop()
 
 section_title(
     "1. Forecast setup",
-    "This page uses a direct multi-horizon model. It predicts a full forward path, and the selected business duration shows the first 1, 7, or 30 forecasted periods."
+    "Each point forecast comes from a model trained specifically for that horizon."
 )
 
-m1, m2, m3, m4 = st.columns(4)
-with m1:
-    product_card("Model", month_meta.get("model_name", "Direct multi-horizon model"))
-with m2:
-    product_card("Day +1 validation MAE", f"{month_metrics.get('h1_mae', 0):.4f}")
-with m3:
-    product_card("Day +7 validation MAE", f"{month_metrics.get('h7_mae', 0):.4f}")
-with m4:
-    product_card("Day +30 validation MAE", f"{month_metrics.get('h30_mae', 0):.4f}")
+setup_cols = st.columns(3)
+for col, (hkey, hname) in zip(setup_cols, HORIZON_ORDER):
+    meta = registry.get(hkey, {})
+    with col:
+        st.markdown(f"### {hname}")
+        st.metric("Model", meta.get("selected_model", "N/A"))
+        st.caption(
+            f"MAE: {float(meta.get('mae', 0.0)):.4f} | "
+            f"RMSE: {float(meta.get('rmse', 0.0)):.4f} | "
+            f"SMAPE: {float(meta.get('smape', 0.0)):.2f}"
+        )
 
 callout(
-    "How to read this page",
-    "A 1-week forecast means a 7-period forecast path. A 1-month forecast means a 30-period forecast path. "
-    "So the chart shows the full path over that selected duration, not just one single future point."
+    "What this means",
+    "These are direct point forecasts, not an interpolated forecast path. "
+    "The 1-day model predicts demand exactly 1 period ahead, the 1-week model predicts exactly 7 periods ahead, "
+    "and the 1-month model predicts exactly 30 periods ahead."
 )
 
 st.markdown("---")
 
 section_title(
-    "2. Choose the forecast scenario",
-    "Select the store, product, and planning duration."
+    "2. Choose the product scenario",
+    "Select one of the available demo store-product scenarios. The page will generate all three planning-horizon forecasts together."
 )
 
-c1, c2, c3 = st.columns([1.1, 1.1, 1.2])
+demo_store_count = df["store_id"].nunique()
+demo_product_count = df["product_id"].nunique()
+demo_pair_count = df[["store_id", "product_id"]].drop_duplicates().shape[0]
+
+s1, s2, s3 = st.columns(3)
+s1.metric("Demo stores", f"{demo_store_count:,}")
+s2.metric("Demo products", f"{demo_product_count:,}")
+s3.metric("Demo store-product pairs", f"{demo_pair_count:,}")
+
+callout(
+    "Demo scenario coverage",
+    "This deployed app uses a curated scenario dataset so the live demo stays fast and lightweight. "
+    "The forecasting API itself is designed to score any store-product row that has the required forecast-ready features."
+)
+
+c1, c2, c3 = st.columns(3)
 
 with c1:
-    store_options = sorted(history_df["store_id"].unique().tolist())
-    selected_store = st.selectbox("Store", store_options)
+    stores = sorted(df["store_id"].unique().tolist())
+    selected_store = st.selectbox("Store", stores)
 
 with c2:
-    product_options = sorted(
-        history_df.loc[history_df["store_id"] == selected_store, "product_id"].unique().tolist()
+    product_candidates = sorted(
+        df.loc[df["store_id"] == selected_store, "product_id"].unique().tolist()
     )
-    selected_product = st.selectbox("Product", product_options)
+    selected_product = st.selectbox("Product", product_candidates)
 
 with c3:
-    selected_duration = st.radio(
-        "Forecast duration",
-        ["1 day ahead", "1 week ahead", "1 month ahead"],
-        index=1,
-        help="This controls how many future periods are shown in the forecast path.",
+    history_window = st.selectbox(
+        "Historical window shown",
+        [14, 30, 60, 90],
+        index=3,
+        help="How many most recent historical records to show before the three forecast points.",
     )
 
-history_window = st.selectbox(
-    "Historical window shown",
-    [14, 30, 60, 90],
-    index=3,
-    help="How many most recent observed records to show before the forecast starts.",
-)
-
-subset = history_df[
-    (history_df["store_id"] == selected_store) &
-    (history_df["product_id"] == selected_product)
+subset = df[
+    (df["store_id"] == selected_store) &
+    (df["product_id"] == selected_product)
 ].sort_values("dt").reset_index(drop=True)
 
 if subset.empty:
-    st.error("No data found for this store-product combination.")
+    st.error("No rows found for this store-product combination.")
     st.stop()
 
-available_history = len(subset)
 recent = subset.tail(history_window).copy()
 latest = subset.iloc[-1].copy()
+last_date = pd.to_datetime(latest["dt"])
 
-selected_steps = HORIZON_MAP[selected_duration]
-last_observed_date = pd.to_datetime(latest["dt"])
 recent_avg_7 = float(subset.tail(7)["sale_amount"].mean()) if len(subset) >= 7 else float(subset["sale_amount"].mean())
 latest_sales = float(latest["sale_amount"])
 
 section_title(
-    "3. Forecast definition",
-    "What the selected forecast means."
+    "3. What these forecasts represent",
+    "Each forecast point answers a different business question."
 )
 
 d1, d2, d3 = st.columns(3)
 with d1:
-    product_card(
-        "What are we forecasting?",
-        "Expected future demand for the selected store-product pair."
+    st.markdown("### 1 day ahead")
+    st.write(
+        "Estimated demand for the **next period after the latest observed row**. "
+        "Useful for short-term replenishment and near-term operational planning."
     )
+
 with d2:
-    product_card(
-        "Forecast horizon",
-        f"{selected_steps} future period(s)."
+    st.markdown("### 1 week ahead")
+    st.write(
+        "Estimated demand for the row **7 periods after the latest observed row**. "
+        "Useful for short-horizon ordering and weekly inventory planning."
     )
+
 with d3:
-    product_card(
-        "Forecast unit",
-        "Demand in `sale_amount` units."
+    st.markdown("### 1 month ahead")
+    st.write(
+        "Estimated demand for the row **30 periods after the latest observed row**. "
+        "Useful for medium-horizon planning, allocation, and forward inventory positioning."
     )
+
+callout(
+    "How the point is produced",
+    "For each horizon, the model uses the latest available feature row for this store-product pair — including demand history, "
+    "rolling statistics, stock availability, calendar, weather, and product/store identifiers — and predicts demand at that exact future horizon."
+)
 
 section_title(
     "4. Current context",
-    "Recent demand and latest observed business context."
+    "Recent observed demand and availability conditions for the selected scenario."
 )
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Latest observed sales", f"{latest_sales:.2f}")
-k2.metric("Recent 7-period average", f"{recent_avg_7:.2f}")
-k3.metric("In-stock ratio", f"{float(latest['in_stock_ratio']):.2f}")
-k4.metric("Stockout hours", f"{float(latest['stockout_hours']):.0f}")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Latest observed sales", f"{latest_sales:.2f}")
+m2.metric("Recent 7-period average", f"{recent_avg_7:.2f}")
+m3.metric("In-stock ratio", f"{float(latest['in_stock_ratio']):.2f}")
+m4.metric("Stockout hours", f"{float(latest['stockout_hours']):.0f}")
 
-with st.expander("Features used by the forecast model"):
-    st.write(
-        "The forecast is based on demand lags, rolling demand statistics, discount/activity signals, "
-        "weather variables, calendar variables, stockout context, and recent average sales when the item was available."
+if float(latest["in_stock_ratio"]) < 0.35 or float(latest["stockout_hours"]) >= 10:
+    st.warning(
+        "Availability looks constrained in the latest row. "
+        "Observed sales may understate true demand if the product was not fully available."
     )
-    st.json(make_month_payload(latest))
+else:
+    st.success(
+        "Availability looks more stable in the latest row, so observed sales are less likely to be heavily constrained by stockout."
+    )
 
-section_title("5. Run forecast")
+with st.expander("Features used by the deployed forecasting models"):
+    feature_groups = pd.DataFrame(
+        [
+            {"Feature group": "Product and store identity", "Examples": "city_id, store_id, management_group_id, category ids, product_id"},
+            {"Feature group": "Lag demand", "Examples": "lag_1, lag_2, lag_3, lag_7, lag_14, lag_21, lag_28"},
+            {"Feature group": "Rolling demand statistics", "Examples": "rolling_mean_7/14/28, rolling_std_7/14/28, rolling_min/max"},
+            {"Feature group": "Availability", "Examples": "stock_hour6_22_cnt, in_stock_ratio, stockout_hours, avg_sales_when_available"},
+            {"Feature group": "Business context", "Examples": "discount, holiday_flag, activity_flag"},
+            {"Feature group": "Calendar and weather", "Examples": "day_of_week, week_of_year, month, day_of_month, is_weekend, precipitation, temperature, humidity, wind"},
+        ]
+    )
+    st.dataframe(feature_groups, use_container_width=True, hide_index=True)
 
-if not st.button("Generate forecast", use_container_width=True):
-    st.info("Click the button to generate the forecast path.")
+section_title("5. Run forecasts")
+
+if not st.button("Generate forecasts", use_container_width=True):
+    st.info("Click the button to generate the 1-day, 1-week, and 1-month forecasts.")
     st.stop()
 
-payload = make_month_payload(latest)
-
+results = []
 try:
-    result = predict_month_horizon(payload)
+    for hkey, hname in HORIZON_ORDER:
+        payload = make_payload(latest, features, hkey)
+        out = predict_business_horizon(payload)
+        horizon_steps = int(out["horizon_steps"])
+        forecast_date = last_date + pd.Timedelta(days=horizon_steps)
+        pred = float(out["predicted_demand"])
+
+        results.append(
+            {
+                "horizon_key": hkey,
+                "Forecast horizon": hname,
+                "Forecast date": forecast_date,
+                "Predicted demand": pred,
+                "Model": out["model_name"],
+                "Model class": out["model_class"],
+                "MAE": float(out["mae"]),
+                "RMSE": float(out["rmse"]),
+                "SMAPE": float(out["smape"]),
+                "Horizon steps": horizon_steps,
+                "Change vs recent avg (%)": pct_change(pred, recent_avg_7),
+            }
+        )
 except Exception as e:
     st.error(f"API request failed: {e}")
-    st.info(f"Make sure the API is reachable at {API_BASE_URL}")
+    st.info(f"Check API_BASE_URL: {API_BASE_URL}")
     st.stop()
 
-forecast_df = pd.DataFrame(result["forecasts"]).copy()
-forecast_df["horizon"] = forecast_df["horizon"].astype(int)
-forecast_df["predicted_demand"] = forecast_df["predicted_demand"].astype(float)
-forecast_df["forecast_date"] = last_observed_date + pd.to_timedelta(forecast_df["horizon"], unit="D")
-
-path_df = forecast_df[forecast_df["horizon"] <= selected_steps].copy().reset_index(drop=True)
-
-if path_df.empty:
-    st.error("No forecast path was returned by the API.")
-    st.stop()
-
-final_point = float(path_df.iloc[-1]["predicted_demand"])
-horizon_total = float(path_df["predicted_demand"].sum())
-horizon_avg = float(path_df["predicted_demand"].mean())
-avg_vs_recent = pct_change(horizon_avg, recent_avg_7)
+results_df = pd.DataFrame(results).sort_values("Horizon steps").reset_index(drop=True)
 
 section_title(
-    "6. Forecast result",
-    "Summary of the selected forecast horizon."
+    "6. Forecast summary",
+    "These are the three horizon-specific point forecasts generated for the selected scenario."
 )
 
-r1, r2, r3, r4 = st.columns(4)
-r1.metric(f"Day +{selected_steps} forecast", f"{final_point:.2f} units")
-r2.metric(f"{selected_steps}-period total", f"{horizon_total:.2f} units")
-r3.metric("Horizon avg vs. recent avg", f"{avg_vs_recent:+.1f}%")
-r4.metric("Model type", result.get("model_type", "direct_multi_horizon"))
-
-if avg_vs_recent > 10:
-    st.success("The projected average over the selected horizon is above the recent 7-period average.")
-elif avg_vs_recent < -10:
-    st.warning("The projected average over the selected horizon is below the recent 7-period average.")
-else:
-    st.info("The projected average over the selected horizon is close to the recent 7-period average.")
+sum_cols = st.columns(3)
+for col, row in zip(sum_cols, results_df.to_dict("records")):
+    with col:
+        st.markdown(f"### {row['Forecast horizon']}")
+        st.metric("Predicted demand", f"{row['Predicted demand']:.2f} units")
+        st.caption(f"Forecast date: {pd.to_datetime(row['Forecast date']).date()}")
+        st.caption(f"Model: {row['Model']}")
+        st.caption(
+            f"MAE: {row['MAE']:.4f} | RMSE: {row['RMSE']:.4f} | SMAPE: {row['SMAPE']:.2f}"
+        )
 
 section_title(
     "7. Forecast visualization",
-    "Here you can see the recent observed demand together with the forward-looking forecast path."
+    "The line is historical observed demand. The three markers are the actual horizon-specific forecasts."
 )
 
-hist_plot_df = recent[["dt", "sale_amount"]].copy()
-hist_plot_df["dt"] = pd.to_datetime(hist_plot_df["dt"])
-hist_plot_df["series"] = "Historical observed sales"
-hist_plot_df["value"] = hist_plot_df["sale_amount"].astype(float)
+history_plot = recent[["dt", "sale_amount"]].copy()
+history_plot["dt"] = pd.to_datetime(history_plot["dt"])
+history_plot = history_plot.rename(columns={"sale_amount": "value"})
+history_plot["series"] = "Observed demand"
 
-forecast_plot_df = pd.concat(
-    [
-        pd.DataFrame(
-            {
-                "dt": [last_observed_date],
-                "series": ["Forecast path"],
-                "value": [latest_sales],
-                "horizon": [0],
-            }
-        ),
-        path_df.rename(columns={"forecast_date": "dt", "predicted_demand": "value"})[
-            ["dt", "value", "horizon"]
-        ].assign(series="Forecast path"),
-    ],
-    ignore_index=True,
+forecast_plot = results_df[["Forecast horizon", "Forecast date", "Predicted demand"]].copy()
+forecast_plot = forecast_plot.rename(
+    columns={"Forecast date": "dt", "Predicted demand": "value"}
 )
+forecast_plot["dt"] = pd.to_datetime(forecast_plot["dt"])
 
-history_line = alt.Chart(hist_plot_df).mark_line(strokeWidth=3).encode(
-    x=alt.X("dt:T", title="Date"),
+connector_rows = []
+for row in results_df.to_dict("records"):
+    connector_rows.append({"dt": last_date, "value": latest_sales, "Forecast horizon": row["Forecast horizon"]})
+    connector_rows.append({"dt": row["Forecast date"], "value": row["Predicted demand"], "Forecast horizon": row["Forecast horizon"]})
+connector_plot = pd.DataFrame(connector_rows)
+
+chart_start = pd.to_datetime(history_plot["dt"].min())
+chart_end = pd.to_datetime(max(history_plot["dt"].max(), forecast_plot["dt"].max()))
+
+history_line = alt.Chart(history_plot).mark_line(strokeWidth=3).encode(
+    x=alt.X(
+        "dt:T",
+        title="Date",
+        scale=alt.Scale(domain=[chart_start, chart_end]),
+    ),
     y=alt.Y("value:Q", title="Demand (sale_amount units)"),
     tooltip=[
         alt.Tooltip("dt:T", title="Date"),
@@ -327,90 +349,115 @@ history_line = alt.Chart(hist_plot_df).mark_line(strokeWidth=3).encode(
     ],
 )
 
-forecast_line = alt.Chart(forecast_plot_df).mark_line(strokeDash=[6, 4], strokeWidth=3).encode(
-    x=alt.X("dt:T", title="Date"),
-    y=alt.Y("value:Q", title="Demand (sale_amount units)"),
+connector_line = alt.Chart(connector_plot).mark_line(strokeDash=[6, 4], strokeWidth=2).encode(
+    x=alt.X("dt:T", scale=alt.Scale(domain=[chart_start, chart_end])),
+    y=alt.Y("value:Q"),
+    detail="Forecast horizon:N",
+    color=alt.Color("Forecast horizon:N", title="Forecast horizon"),
     tooltip=[
+        alt.Tooltip("Forecast horizon:N", title="Forecast horizon"),
         alt.Tooltip("dt:T", title="Date"),
-        alt.Tooltip("horizon:Q", title="Periods ahead"),
-        alt.Tooltip("value:Q", title="Forecasted demand", format=".2f"),
+        alt.Tooltip("value:Q", title="Demand", format=".2f"),
     ],
 )
 
-forecast_points = alt.Chart(forecast_plot_df[forecast_plot_df["horizon"] > 0]).mark_point(filled=True, size=65).encode(
-    x=alt.X("dt:T", title="Date"),
-    y=alt.Y("value:Q", title="Demand (sale_amount units)"),
+forecast_points = alt.Chart(forecast_plot).mark_point(filled=True, size=180).encode(
+    x=alt.X("dt:T", scale=alt.Scale(domain=[chart_start, chart_end])),
+    y=alt.Y("value:Q"),
+    color=alt.Color("Forecast horizon:N", title="Forecast horizon"),
+    shape=alt.Shape("Forecast horizon:N", title="Forecast horizon"),
     tooltip=[
+        alt.Tooltip("Forecast horizon:N", title="Forecast horizon"),
         alt.Tooltip("dt:T", title="Forecast date"),
-        alt.Tooltip("horizon:Q", title="Periods ahead"),
-        alt.Tooltip("value:Q", title="Forecasted demand", format=".2f"),
+        alt.Tooltip("value:Q", title="Predicted demand", format=".2f"),
     ],
 )
 
-boundary_rule = alt.Chart(
-    pd.DataFrame({"dt": [last_observed_date]})
-).mark_rule(strokeDash=[2, 2]).encode(
-    x="dt:T"
+boundary_rule = alt.Chart(pd.DataFrame({"dt": [last_date]})).mark_rule(strokeDash=[2, 2]).encode(
+    x=alt.X("dt:T", scale=alt.Scale(domain=[chart_start, chart_end]))
 )
 
-chart = (history_line + forecast_line + forecast_points + boundary_rule).properties(height=430)
+chart = (history_line + connector_line + forecast_points + boundary_rule).properties(height=430)
 st.altair_chart(chart, use_container_width=True)
 
 st.caption(
-    f"Showing {len(recent)} observed record(s) out of {available_history} available for this store-product pair, "
-    f"followed by the next {selected_steps} forecasted period(s)."
+    f"Showing the latest {len(recent)} observed records and the three deployed point forecasts. "
+    "There is no interpolation between forecast dates."
 )
 
 callout(
-    "Why the forecast may look smoother than history",
-    "The forecast path represents expected demand under the latest known business context. "
-    "Historical spikes can come from promotions, stock changes, events, weather shifts, or random demand noise. "
-    "If future promotion, replenishment, event, or weather plans are available, they should be added as future scenario inputs."
+    "How to read this chart",
+    "The historical line shows observed demand. "
+    "The forecast markers are the actual predictions for D+1, D+7, and D+30. "
+    "The dashed lines only connect the last observed point to each forecast point for readability. "
+    "They do not imply predicted values for the dates in between."
 )
 
 section_title(
-    "8. Forecast path table",
-    f"Detailed values for the next {selected_steps} forecasted period(s)."
+    "8. Forecast results table",
+    "This table reports the forecasted value and the validation metrics of the model used for each horizon."
 )
 
-path_table = path_df[["horizon", "forecast_date", "predicted_demand"]].copy()
-path_table.columns = ["Periods ahead", "Forecast date", "Forecasted demand"]
-st.dataframe(path_table, use_container_width=True, hide_index=True)
+display_df = results_df.copy()
+display_df["Forecast date"] = pd.to_datetime(display_df["Forecast date"]).dt.date
+display_df["Predicted demand"] = display_df["Predicted demand"].map(lambda x: round(float(x), 3))
+display_df["MAE"] = display_df["MAE"].map(lambda x: round(float(x), 4))
+display_df["RMSE"] = display_df["RMSE"].map(lambda x: round(float(x), 4))
+display_df["SMAPE"] = display_df["SMAPE"].map(lambda x: round(float(x), 2))
+display_df["Change vs recent avg (%)"] = display_df["Change vs recent avg (%)"].map(lambda x: round(float(x), 1))
+
+st.dataframe(
+    display_df[
+        [
+            "Forecast horizon",
+            "Forecast date",
+            "Predicted demand",
+            "Model",
+            "Model class",
+            "MAE",
+            "RMSE",
+            "SMAPE",
+            "Change vs recent avg (%)",
+        ]
+    ],
+    use_container_width=True,
+    hide_index=True,
+)
 
 section_title(
-    "9. Business interpretation",
-    "How to interpret the result for planning."
+    "9. Interpretation",
+    "Here is how to interpret the three forecasts from an operational point of view."
 )
 
-left, right = st.columns(2)
+for row in results_df.to_dict("records"):
+    pred = row["Predicted demand"]
+    delta_pct = row["Change vs recent avg (%)"]
 
-with left:
-    callout(
-        "Demand signal",
-        f"Across the selected {selected_steps}-period horizon, the projected average is {horizon_avg:.2f}, "
-        f"while the recent 7-period average is {recent_avg_7:.2f}."
-    )
-
-with right:
     if float(latest["in_stock_ratio"]) < 0.35 or float(latest["stockout_hours"]) >= 10:
-        callout(
-            "Operational note",
-            "Availability looks constrained. Before reading low sales as weak demand, check replenishment and shelf availability."
+        guidance = (
+            "Recent availability appears constrained, so low recent sales may not fully reflect true demand. "
+            "Use this forecast together with replenishment and stock review."
         )
-    elif avg_vs_recent > 10:
-        callout(
-            "Operational note",
-            "Demand is trending above the recent average. This scenario may need closer replenishment planning."
+    elif delta_pct > 10:
+        guidance = (
+            "Demand is above the recent short-term average. This horizon may call for closer replenishment planning."
         )
-    elif avg_vs_recent < -10:
-        callout(
-            "Operational note",
-            "Demand is trending below the recent average. Review whether this reflects lower demand, weaker activity, or reduced promotion support."
+    elif delta_pct < -10:
+        guidance = (
+            "Demand is below the recent short-term average. This may indicate softer demand or weaker near-term pull."
         )
     else:
-        callout(
-            "Operational note",
-            "The projected demand is broadly in line with the recent average. No major shift is indicated from this scenario alone."
+        guidance = (
+            "Demand is close to the recent short-term average. This suggests a more stable near-term outlook."
         )
+
+    st.markdown(f"### {row['Forecast horizon']}")
+    st.write(
+        f"Forecast date: **{pd.to_datetime(row['Forecast date']).date()}**  \n"
+        f"Predicted demand: **{pred:.2f} units**  \n"
+        f"Model used: **{row['Model']}**  \n"
+        f"Change vs recent 7-period average: **{delta_pct:+.1f}%**"
+    )
+    st.write(guidance)
 
 st.sidebar.write("API Base URL:", API_BASE_URL)
