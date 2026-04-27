@@ -7,6 +7,7 @@ pages = [
     st.Page("pages/features.py", title="Features", icon="🧱"),
     st.Page("pages/workflow.py", title="Workflow", icon="🔁"),
     st.Page("pages/modeling.py", title="Modeling", icon="🧪"),
+    st.Page("pages/upload_analyze.py", title="Upload & Analyze", icon="📤"),
     st.Page("pages/data_explorer.py", title="Data Explorer", icon="📊"),
     st.Page("pages/forecast.py", title="Forecast", icon="🔮"),
     st.Page("pages/api_future.py", title="API & Future", icon="☁️"),

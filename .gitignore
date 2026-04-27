@@ -5,3 +5,16 @@ __pycache__/
 .idea/
 data/raw/
 data/interim/
+# Large generated processed datasets
+data/processed/model_train_full.parquet
+data/processed/model_eval_full.parquet
+data/processed/model_data_full.parquet
+data/processed/model_train_rich.parquet
+data/processed/model_eval_rich.parquet
+
+# Experimental model artifacts not used by production app
+models/month_horizon_model.pkl
+models/month_horizon_features.pkl
+
+# Local backup model artifacts
+models/forecast_model_previous_backup.pkl

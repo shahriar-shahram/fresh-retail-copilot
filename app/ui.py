@@ -215,7 +215,7 @@ def sidebar_guide(active_page: str):
     st.sidebar.markdown("""
     **Flow**
 
-    Overview → Features → Workflow → Modeling → Data → Forecast → API
+    Overview → Features → Workflow → Modeling → Upload → Data → Forecast → API
     """)
     st.sidebar.markdown("---")
     st.sidebar.caption(

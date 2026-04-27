@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.frontend'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/project-0f873c0b-db27-4381-888/cloud-run-source-deploy/fresh-retail-copilot-frontend:manual-v2'
+      - '.'
+
+images:
+  - 'us-central1-docker.pkg.dev/project-0f873c0b-db27-4381-888/cloud-run-source-deploy/fresh-retail-copilot-frontend:manual-v2'

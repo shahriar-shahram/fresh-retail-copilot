@@ -1,110 +1,157 @@
+import json
+from pathlib import Path
+
+import pandas as pd
 import streamlit as st
+
 from ui import inject_css, sidebar_guide, hero, section_title, product_card, callout, flow_step
 
 st.set_page_config(page_title="Modeling | Fresh Retail Copilot", page_icon="🧪", layout="wide")
 inject_css()
 sidebar_guide("Modeling")
 
+REGISTRY_PATH = Path("models/business_horizon_model_registry.json")
+METADATA_PATH = Path("models/business_horizon_metadata.json")
+COMPARISON_PATH = Path("results/models/business_horizon_model_comparison.csv")
+
 hero(
     "Modeling",
     (
-        "Here we explain how the forecast is built: first clean the demand signal, then train the model, "
-        "then serve the trained model through the API."
+        "The forecasting system is trained around three business planning horizons: "
+        "1 day ahead, 1 week ahead, and 1 month ahead. Each horizon has its own model-selection study."
     ),
-    badges=["Training data", "Feature engineering", "Demand correction", "Forecast model", "API inference"],
-    eyebrow="Forecasting method",
+    badges=["CatBoost", "LightGBM", "XGBoost", "Horizon-specific models", "Rich feature set"],
+    eyebrow="Forecast model study",
 )
 
-section_title("How the forecast is done")
+section_title("Modeling workflow")
 
 steps = st.columns(5, gap="small")
-
 with steps[0]:
-    flow_step(1, "Raw records", "Start from sales, stock, promo, calendar, and weather data.")
-
+    flow_step(1, "Raw data", "Store, product, sales, stock, promo, weather.")
 with steps[1]:
-    flow_step(2, "Availability check", "Identify rows where sales may be limited by stockouts.")
-
+    flow_step(2, "Features", "IDs, lags, rolling stats, calendar, context.")
 with steps[2]:
-    flow_step(3, "Demand target", "Build a cleaner target using observed sales and recovered demand.")
-
+    flow_step(3, "Targets", "1 day, 1 week, 1 month ahead.")
 with steps[3]:
-    flow_step(4, "Train model", "Train the forecast model on engineered demand features.")
-
+    flow_step(4, "Compare", "Baselines and boosted models.")
 with steps[4]:
-    flow_step(5, "Serve forecast", "Use the trained model through the backend API.")
+    flow_step(5, "Deploy", "Best model per horizon.")
 
-section_title("What goes into the model")
+section_title("Selected production models")
 
-col1, col2, col3 = st.columns(3, gap="medium")
+if REGISTRY_PATH.exists():
+    with open(REGISTRY_PATH, "r") as f:
+        registry = json.load(f)
 
-with col1:
-    product_card(
-        "Sales history",
-        "Lag features and rolling averages summarize recent demand behavior."
-    )
+    c1, c2, c3 = st.columns(3)
 
-with col2:
-    product_card(
-        "Availability context",
-        "Stockout hours, in-stock ratio, and average sales when available help interpret low-sales periods."
-    )
+    horizon_order = [
+        ("1_day_ahead", "1 day ahead"),
+        ("1_week_ahead", "1 week ahead"),
+        ("1_month_ahead", "1 month ahead"),
+    ]
 
-with col3:
-    product_card(
-        "External signals",
-        "Discounts, holidays, activity flags, weather, weekday, and month add business context."
-    )
+    for col, (key, label) in zip([c1, c2, c3], horizon_order):
+        meta = registry.get(key, {})
+        with col:
+            product_card(
+                label,
+                (
+                    f"Selected model: **{meta.get('selected_model', 'N/A')}**  \n"
+                    f"MAE: `{meta.get('mae', 0):.4f}`  \n"
+                    f"RMSE: `{meta.get('rmse', 0):.4f}`  \n"
+                    f"SMAPE: `{meta.get('smape', 0):.2f}`"
+                ),
+            )
 
-section_title("Training idea")
-
-left, right = st.columns(2, gap="large")
-
-with left:
     callout(
-        "Why not train only on raw sales?",
-        "Raw sales may be biased when the product was unavailable. If the model learns directly from those rows, it may underforecast demand."
+        "Why separate models?",
+        (
+            "Short-term and longer-horizon forecasts behave differently. "
+            "A model that works best for tomorrow is not always the best model for a month-ahead forecast, "
+            "so the app selects the best model separately for each planning horizon."
+        ),
+    )
+else:
+    st.warning("Business horizon registry not found. Run `python scripts/train_business_horizon_models.py` first.")
+
+section_title("Model comparison")
+
+if COMPARISON_PATH.exists():
+    comparison = pd.read_csv(COMPARISON_PATH)
+
+    display_cols = [
+        "horizon_label",
+        "model",
+        "model_class",
+        "mae",
+        "rmse",
+        "smape",
+        "rank_by_mae",
+        "train_rows",
+        "validation_rows",
+    ]
+
+    available_cols = [c for c in display_cols if c in comparison.columns]
+    st.dataframe(comparison[available_cols], use_container_width=True, hide_index=True)
+
+    st.caption(
+        "Lower MAE, RMSE, and SMAPE are better. The deployed model for each horizon is the best trainable model by validation MAE."
+    )
+else:
+    st.warning("Model comparison file not found.")
+
+section_title("Feature groups")
+
+f1, f2, f3 = st.columns(3, gap="medium")
+with f1:
+    product_card(
+        "Identity features",
+        "`city_id`, `store_id`, product/category IDs"
+    )
+with f2:
+    product_card(
+        "Demand history",
+        "`lag_1`, `lag_2`, `lag_3`, `lag_7`, `lag_14`, `lag_21`, `lag_28`"
+    )
+with f3:
+    product_card(
+        "Rolling demand",
+        "Rolling mean, std, min, and max over 7, 14, and 28 periods"
     )
 
-with right:
-    callout(
-        "What we do instead",
-        "We use availability-aware features and a corrected demand target so the model has better context before learning."
+f4, f5, f6 = st.columns(3, gap="medium")
+with f4:
+    product_card(
+        "Availability",
+        "`stock_hour6_22_cnt`, `in_stock_ratio`, `stockout_hours`, sales when available"
+    )
+with f5:
+    product_card(
+        "Business context",
+        "`discount`, `holiday_flag`, `activity_flag`"
+    )
+with f6:
+    product_card(
+        "Weather and calendar",
+        "Temperature, humidity, wind, precipitation, day/week/month features"
     )
 
-section_title("Is the app using the trained model?")
+section_title("Baselines included")
 
-st.markdown("""
-Yes, the Streamlit app sends the selected scenario features to the backend prediction API.
-
-The backend is responsible for loading the trained model artifact and returning the forecast.
-The app then displays that returned value as the next-demand prediction.
-""")
-
-st.code(
-    """
-selected scenario
-    ↓
-engineered feature row
-    ↓
-POST /predict
-    ↓
-trained model inference
-    ↓
-predicted demand
-    """,
-    language="text",
+callout(
+    "Baseline checks",
+    (
+        "The study compares ML models against simple forecasting rules such as last observed value, "
+        "7-period average, seasonal lag-7, seasonal lag-28, and naive mean. "
+        "This makes the model improvement easier to defend."
+    ),
 )
 
-section_title("Feature payload used for inference")
+section_title("Deployment note")
 
-st.markdown("""
-The forecast request is based on features such as:
-
-- recent demand: `lag_1`, `lag_7`, `rolling_mean_7`
-- availability: `stockout_hours`, `avg_sales_when_available`
-- demand variability: `demand_std`
-- business context: `discount`, `holiday_flag`, `activity_flag`
-- weather: `precpt`, `avg_temperature`, `avg_humidity`, `avg_wind_level`
-- calendar: `day_of_week`, `month`
-""")
+st.success(
+    "The API exposes `/business-horizon-models` and `/predict-business-horizon`. "
+    "The Forecast page uses the selected duration to call the correct horizon-specific model."
+)

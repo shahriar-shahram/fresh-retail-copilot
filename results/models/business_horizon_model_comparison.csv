@@ -1,0 +1,31 @@
+model,model_key,model_class,mae,rmse,smape,is_trainable_model,rank_by_mae,horizon_label,horizon_steps,target,train_rows,validation_rows
+CatBoost,catboost,CatBoostRegressor,0.3750697126804924,0.6265900708684914,43.214510975568935,True,1,1_day_ahead,1,target_1_day_ahead,3600000,850000
+LightGBM,lightgbm,LGBMRegressor,0.37732042284162853,0.637692220579127,43.20773080364984,True,2,1_day_ahead,1,target_1_day_ahead,3600000,850000
+HistGradientBoosting,histgradientboosting,HistGradientBoostingRegressor,0.3836633584023975,0.6778824909434938,43.257845032834844,True,3,1_day_ahead,1,target_1_day_ahead,3600000,850000
+XGBoost,xgboost,XGBRegressor,0.3848075270652771,0.709743320941925,43.15760460172554,True,4,1_day_ahead,1,target_1_day_ahead,3600000,850000
+7-period average baseline,7_period_average_baseline,rule_based_baseline,0.39130761680672266,0.64535927163647,44.81577345808216,False,5,1_day_ahead,1,target_1_day_ahead,3600000,850000
+Ridge Regression,ridge_regression,Ridge,0.3935011029243469,0.6525234580039978,45.99308976173684,True,6,1_day_ahead,1,target_1_day_ahead,3600000,850000
+Seasonal lag-7 baseline,seasonal_lag_7_baseline,rule_based_baseline,0.5035209211764704,0.8471862387963361,58.267400836639084,False,7,1_day_ahead,1,target_1_day_ahead,3600000,850000
+Last observed value baseline,last_observed_value_baseline,rule_based_baseline,0.5048668647058822,0.8352495313370871,57.075374289621436,False,8,1_day_ahead,1,target_1_day_ahead,3600000,850000
+Seasonal lag-28 baseline,seasonal_lag_28_baseline,rule_based_baseline,0.58966562,1.0616619125619537,62.62814541119421,False,9,1_day_ahead,1,target_1_day_ahead,3600000,850000
+Naive mean baseline,naive_mean_baseline,DummyRegressor,0.7562252879142761,1.7354919910430908,66.15876723231506,True,10,1_day_ahead,1,target_1_day_ahead,3600000,850000
+LightGBM,lightgbm,LGBMRegressor,0.40722005534989153,0.6929938377319389,45.04829184324052,True,1,1_week_ahead,7,target_1_week_ahead,3350000,800000
+CatBoost,catboost,CatBoostRegressor,0.4083395519000476,0.6924882119979633,45.2696100355985,True,2,1_week_ahead,7,target_1_week_ahead,3350000,800000
+HistGradientBoosting,histgradientboosting,HistGradientBoostingRegressor,0.41240820023000224,0.7093791698115364,45.238657201676446,True,3,1_week_ahead,7,target_1_week_ahead,3350000,800000
+XGBoost,xgboost,XGBRegressor,0.4183691143989563,0.7699015736579895,45.24117055659242,True,4,1_week_ahead,7,target_1_week_ahead,3350000,800000
+7-period average baseline,7_period_average_baseline,rule_based_baseline,0.4335633682142859,0.7272408494766017,48.11314887247781,False,5,1_week_ahead,7,target_1_week_ahead,3350000,800000
+Ridge Regression,ridge_regression,Ridge,0.44657760858535767,0.7403279542922974,54.739234906862364,True,6,1_week_ahead,7,target_1_week_ahead,3350000,800000
+Last observed value baseline,last_observed_value_baseline,rule_based_baseline,0.5034946837500001,0.8437023763559932,58.52878147012754,False,7,1_week_ahead,7,target_1_week_ahead,3350000,800000
+Seasonal lag-7 baseline,seasonal_lag_7_baseline,rule_based_baseline,0.517152925,0.8759420412618634,59.3270128798312,False,8,1_week_ahead,7,target_1_week_ahead,3350000,800000
+Seasonal lag-28 baseline,seasonal_lag_28_baseline,rule_based_baseline,0.6005419787500001,1.0800541505654937,64.44230039989792,False,9,1_week_ahead,7,target_1_week_ahead,3350000,800000
+Naive mean baseline,naive_mean_baseline,DummyRegressor,0.7623205184936523,1.7401800155639648,66.58954903826752,True,10,1_week_ahead,7,target_1_week_ahead,3350000,800000
+CatBoost,catboost,CatBoostRegressor,0.45284924229366674,0.76213314415182,47.34960692025714,True,1,1_month_ahead,30,target_1_month_ahead,2400000,600000
+LightGBM,lightgbm,LGBMRegressor,0.45379678147551294,0.7632544012129204,47.339140319633884,True,2,1_month_ahead,30,target_1_month_ahead,2400000,600000
+HistGradientBoosting,histgradientboosting,HistGradientBoostingRegressor,0.45577473412033637,0.7712091044923537,47.625029068390695,True,3,1_month_ahead,30,target_1_month_ahead,2400000,600000
+XGBoost,xgboost,XGBRegressor,0.46000149846076965,0.7865692973136902,47.56533077933784,True,4,1_month_ahead,30,target_1_month_ahead,2400000,600000
+7-period average baseline,7_period_average_baseline,rule_based_baseline,0.5384439411904761,0.9700068348019077,53.27186270580619,False,5,1_month_ahead,30,target_1_month_ahead,2400000,600000
+Ridge Regression,ridge_regression,Ridge,0.5564678907394409,0.9736829996109009,58.53919168292396,True,6,1_month_ahead,30,target_1_month_ahead,2400000,600000
+Last observed value baseline,last_observed_value_baseline,rule_based_baseline,0.6154099516666665,1.1231128423278165,64.39744229932249,False,7,1_month_ahead,30,target_1_month_ahead,2400000,600000
+Seasonal lag-7 baseline,seasonal_lag_7_baseline,rule_based_baseline,0.6641439333333333,1.242536590225817,66.989553436213,False,8,1_month_ahead,30,target_1_month_ahead,2400000,600000
+Seasonal lag-28 baseline,seasonal_lag_28_baseline,rule_based_baseline,0.7196651300000001,1.5136368023483486,72.5673823632439,False,9,1_month_ahead,30,target_1_month_ahead,2400000,600000
+Naive mean baseline,naive_mean_baseline,DummyRegressor,0.787022054195404,1.7853434085845947,66.6819035367079,True,10,1_month_ahead,30,target_1_month_ahead,2400000,600000
